@@ -1,2 +1,2 @@
 # portafolio-data-science
-Proyectos de ciencia de datos con enfoque en la traducción de datos en insights accionables; combinando Python, visualización y modelado predictivo
+Portafolio  basado en el libro Doing Data Science: Straight Talk from the Frontline. Cada capítulo se transforma en un proyecto aplicado con notebooks, análisis, visualizaciones y documentación.
