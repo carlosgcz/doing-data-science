@@ -1,0 +1,76 @@
+# Cargar librerías
+library(ggplot2)
+library(doBy)
+
+# Leer datos
+data1 <- read.csv("nyt1.csv")  # Asegúrate de estar en la carpeta correcta o usar ruta completa
+
+# Crear grupos de edad
+data1$agecat <- cut(data1$Age, c(-Inf, 0, 18, 24, 34, 44, 54, 64, Inf),
+                    labels = c("Invalid", "<18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"))
+
+# Ver resumen general
+summary(data1)
+
+# Resumen por grupo etario
+siterange <- function(x){ c(length(x), min(x), mean(x), max(x)) }
+summaryBy(Age ~ agecat, data = data1, FUN = siterange)
+
+# Estadísticas por grupo de edad
+summaryBy(Gender + Signed_In + Impressions + Clicks ~ agecat, data = data1)
+
+# Crear variable CTR
+data1$CTR <- ifelse(data1$Impressions > 0, data1$Clicks / data1$Impressions, NA)
+
+# Categoría por comportamiento de usuario
+data1$scode <- "Imps"
+data1$scode[data1$Impressions == 0] <- "NoImps"
+data1$scode[data1$Clicks > 0] <- "Clicks"
+data1$scode <- as.factor(data1$scode)
+
+# ============================
+# VISUALIZACIONES
+# ============================
+
+# Histograma de impresiones por grupo etario
+ggplot(data1, aes(x = Impressions, fill = agecat)) +
+  geom_histogram(binwidth = 1) +
+  ggtitle("Distribución de impresiones por grupo etario") +
+  theme_minimal()
+
+# Boxplot de impresiones por grupo etario
+ggplot(data1, aes(x = agecat, y = Impressions, fill = agecat)) +
+  geom_boxplot() +
+  ggtitle("Boxplot de impresiones por grupo etario") +
+  theme_minimal()
+
+# Densidad de CTR por grupo etario (usuarios con impresiones > 0)
+ggplot(subset(data1, Impressions > 0), aes(x = CTR, colour = agecat)) +
+  geom_density() +
+  ggtitle("Densidad de CTR por grupo etario") +
+  theme_minimal()
+
+# Densidad de CTR para usuarios que hicieron clic
+ggplot(subset(data1, Clicks > 0), aes(x = CTR, colour = agecat)) +
+  geom_density() +
+  ggtitle("Densidad de CTR por edad (solo usuarios con clics)") +
+  theme_minimal()
+
+# Boxplot de clics por grupo etario (solo usuarios con clics)
+ggplot(subset(data1, Clicks > 0), aes(x = agecat, y = Clicks, fill = agecat)) +
+  geom_boxplot() +
+  ggtitle("Boxplot de clics por edad (solo con clics)") +
+  theme_minimal()
+
+# Densidad de clics por grupo etario (solo usuarios con clics)
+ggplot(subset(data1, Clicks > 0), aes(x = Clicks, colour = agecat)) +
+  geom_density() +
+  ggtitle("Densidad de clics por edad (solo con clics)") +
+  theme_minimal()
+
+# Frecuencia de comportamiento scode por edad y género
+etable <- summaryBy(Impressions ~ scode + Gender + agecat, data = data1, FUN = length)
+names(etable)[4] <- "count"
+
+# Mostrar tabla resumida
+print(etable)
