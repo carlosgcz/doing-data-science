@@ -1,12 +1,12 @@
 ## 📁 Estructura del capítulo
-
+```
 chapter-02/
 ├── data/                   # Archivos CSV: nyt1.csv a nyt31.csv
 ├── notebook/               # Scripts y notebooks en Python y/o R
 │   ├── eda_nyt.ipynb       # Análisis EDA en Python
 │   └── eda_nyt.Rmd         # Análisis EDA en R
 └── README.md               # Descripción del capítulo y avances
-
+```
 ### 📊 Análisis en R y Python: Enfoques complementarios
 
 Para este análisis exploratorio de los datos (EDA), se implementaron dos enfoques paralelos utilizando R (`ggplot2`) y Python (`seaborn`). Ambos entornos permiten explorar y visualizar datos de manera efectiva, pero cada uno tiene fortalezas distintas:
