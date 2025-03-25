@@ -1,3 +1,4 @@
+```
 doing-data-science/
 │
 ├── chapter-02/                   # Capítulo 2: Inferencia Estadística y EDA
@@ -11,3 +12,5 @@ doing-data-science/
 ├── .RData                        # Workspace de R
 ├── .Rhistory                     # Historial de comandos R
 └── README.md                     # Descripción general (este archivo)
+
+```
