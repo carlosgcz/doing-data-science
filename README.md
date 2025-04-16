@@ -1,16 +1,14 @@
 ```
 doing-data-science/
 │
-├── chapter-02/                   # Capítulo 2: Inferencia Estadística y EDA
-│   ├── data/                     # Datasets y archivos fuente
-│   ├── notebook/                 # Notebooks en Python o RMarkdown
-│   └── README.md                 # Explicación del capítulo
+├── chapter-02/                   # Capítulo 2: Inferencia Estadística, EDA y RealDirect
+│   ├── data/                     # Datasets: archivos NYT (CSV) y Rolling Sales (XLS)
+│   ├── notebook/                 # Notebooks Python (.ipynb) y RMarkdown (.Rmd)
+│   └── README.md                 # Guía y avances del capítulo
 │
-├── LICENSE                       # Licencia del proyecto
-├── requirements.txt              # Dependencias de Python
+├── LICENSE                       # Licencia MIT
+├── requirements.txt              # Dependencias Python
 ├── doing-data-science.Rproj      # Proyecto de RStudio
-├── .RData                        # Workspace de R
-├── .Rhistory                     # Historial de comandos R
-└── README.md                     # Descripción general (este archivo)
+└── README.md                     # Descripción general del portafolio
 
 ```
