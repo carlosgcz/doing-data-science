@@ -1,0 +1,490 @@
+```         
+---
+title: "Exercise 01: Simulación y Regresión Lineal"
+author: "CGCZ"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(GGally)
+library(caret)
+library(patchwork)
+library(MASS)
+library(ggfortify)
+```
+
+```{r}
+# Parámetros
+beta_0 <- 1.1
+beta_1 <- -8.2
+beta_2 <- 5.0
+sigma <- 2.0
+alpha <- 2.0
+scale_param <- 1.0
+sample_sizes <- c(50, 100, 200, 500, 1000, 2000)
+
+# Funciones de simulación
+simulate_simple <- function(n, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  x1 <- rnorm(n, mean = 5, sd = 7)
+  eps <- rnorm(n, mean = 0, sd = sigma)
+  y <- beta_0 + beta_1 * x1 + eps
+  return(list(x1 = x1, y = y, eps = eps))
+}
+
+simulate_gamma <- function(n, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  x1 <- rnorm(n, mean = 5, sd = 7)
+  x2 <- rgamma(n, shape = alpha, scale = scale_param)
+  eps <- rnorm(n, mean = 0, sd = sigma)
+  y <- beta_0 + beta_1 * x1 + beta_2 * x2 + eps
+  return(data.frame(x1 = x1, x2 = x2, y = y, eps = eps))
+}
+
+simulate_with_z <- function(n, seed = NULL) {
+  df <- simulate_gamma(n, seed)
+  df$z <- df$x1^2
+  return(df)
+}
+
+simulate_with_different_errors <- function(n, error_type = 'normal', seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  x1 <- rnorm(n, mean = 5, sd = 7)
+  
+  if (error_type == 'normal') {
+    eps <- rnorm(n, mean = 0, sd = sigma)
+  } else if (error_type == 'uniform') {
+    eps <- runif(n, min = -2*sigma, max = 2*sigma)
+  } else if (error_type == 't') {
+    eps <- rt(n, df = 3) * sigma
+  } else {
+    stop("error_type debe ser 'normal', 'uniform' o 't'")
+  }
+  
+  y <- beta_0 + beta_1 * x1 + eps
+  return(data.frame(x1 = x1, eps = eps, y = y))
+}
+
+simulate_with_more_distributions <- function(n, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  data.frame(
+    x1 = rnorm(n, mean = 5, sd = 7),
+    x2 = rgamma(n, shape = alpha, scale = scale_param),
+    x3 = rpois(n, lambda = 2),
+    x4 = rbinom(n, size = 10, prob = 0.3)
+  )
+}
+
+evaluate_with_cv <- function(X, y, k = 5) {
+  # Crear un data frame para caret
+  data_cv <- as.data.frame(X)
+  data_cv$y <- y
+  
+  # Configurar control de validación cruzada
+  ctrl <- trainControl(method = "cv", number = k)
+  
+  # Entrenar modelo con validación cruzada
+  model <- train(y ~ ., data = data_cv, method = "lm", trControl = ctrl)
+  
+  # Extraer RMSE y convertir a MSE
+  return(model$results$RMSE^2)
+}
+
+compute_confidence_intervals <- function(model) {
+  # Extraer intervalos de confianza directamente de confint
+  conf_int <- confint(model, level = 0.95)
+  return(conf_int)
+}
+
+plot_diagnostic_plots <- function(model) {
+  par(mfrow = c(2, 2))
+  plot(model)
+  par(mfrow = c(1, 1))
+}
+
+```
+
+```{r}
+# Simulación simple para robustos
+set.seed(42)
+sim_simple <- simulate_simple(1000, seed = 42)
+df_simple <- data.frame(x1 = sim_simple$x1, y = sim_simple$y)
+
+# Regresión robusta con MASS::rlm
+model_rlm <- MASS::rlm(y ~ x1, data = df_simple)
+summary(model_rlm)
+
+# Regresión robusta con caret::train (M-estimator)
+ctrl <- trainControl(method = "cv", number = 5)
+model_caret <- train(y ~ x1, data = df_simple, method = "rlm", trControl = ctrl)
+model_caret
+```
+
+```{r}
+set.seed(42)
+sim_data <- simulate_simple(1000, seed = 42)
+df1 <- data.frame(x1 = sim_data$x1, y = sim_data$y)
+
+p1 <- ggplot(df1, aes(x = x1)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  labs(title = "Distribución de x1", x = "x1", y = "Frecuencia") +
+  theme_minimal()
+
+p2 <- ggplot(df1, aes(x = y)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  labs(title = "Distribución de y", x = "y", y = "Frecuencia") +
+  theme_minimal()
+
+p3 <- ggplot(df1, aes(x = x1, y = y)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  labs(title = "Scatter x1 vs y", x = "x1", y = "y") +
+  theme_minimal()
+
+# Combinar con patchwork
+(p1 + p2) / p3
+```
+
+```{r}
+model_simple <- lm(y ~ x1, data = df1)
+summary(model_simple)
+# Diagnósticos automáticos con ggfortify
+autoplot(model_simple, which = 1:4, nrow = 2)
+```
+
+```{r}
+mse_train <- list(x1 = numeric(), x2 = numeric(), x1_x2 = numeric(), int = numeric())
+mse_test  <- list(x1 = numeric(), x2 = numeric(), x1_x2 = numeric(), int = numeric())
+r2_train  <- list(x1 = numeric(), x2 = numeric(), x1_x2 = numeric(), int = numeric())
+r2_test   <- list(x1 = numeric(), x2 = numeric(), x1_x2 = numeric(), int = numeric())
+coefs     <- list(x1 = numeric(), x2 = numeric(), interaction = numeric())
+
+for (n in sample_sizes) {
+  set.seed(42)
+  df <- simulate_gamma(n, seed = 42)
+  df$x1_x2 <- df$x1 * df$x2
+  train_idx <- sample(seq_len(nrow(df)), size = 0.8 * nrow(df))
+  train <- df[train_idx, ]
+  test  <- df[-train_idx, ]
+  models <- list(
+    x1    = lm(y ~ x1, data = train),
+    x2    = lm(y ~ x2, data = train),
+    x1_x2 = lm(y ~ x1 + x2, data = train),
+    int   = lm(y ~ x1 + x2 + x1_x2, data = train)
+  )
+  for (key in names(models)) {
+    m <- models[[key]]
+    pred_tr <- predict(m, train)
+    pred_te <- predict(m, test)
+    mse_train[[key]] <- c(mse_train[[key]], mean((train$y - pred_tr)^2))
+    mse_test[[key]]  <- c(mse_test[[key]],  mean((test$y - pred_te)^2))
+    r2_train[[key]]  <- c(r2_train[[key]], summary(m)$r.squared)
+    r2_test[[key]]   <- c(r2_test[[key]], 1 - sum((test$y - pred_te)^2) / sum((test$y - mean(test$y))^2))
+    if (key == "int") {
+      coefs$x1          <- c(coefs$x1, coef(m)[2])
+      coefs$x2          <- c(coefs$x2, coef(m)[3])
+      coefs$interaction <- c(coefs$interaction, coef(m)[4])
+    }
+  }
+}
+
+# Graficar MSE vs n
+df_mse <- tibble(
+  n = rep(sample_sizes, times = 8),
+  value = c(unlist(mse_train), unlist(mse_test)),
+  metric = rep(c("Train x1","Train x2","Train x1_x2","Train int","Test x1","Test x2","Test x1_x2","Test int"), each = length(sample_sizes))
+)
+ggplot(df_mse, aes(x = n, y = value, color = metric)) +
+  geom_line() + geom_point() +
+  labs(title = "MSE vs n", y = "MSE") +
+  theme_minimal()
+
+# Graficar R² vs n
+df_r2 <- tibble(
+  n = rep(sample_sizes, times = 8),
+  value = c(unlist(r2_train), unlist(r2_test)),
+  metric = rep(c("Train x1","Train x2","Train x1_x2","Train int","Test x1","Test x2","Test x1_x2","Test int"), each = length(sample_sizes))
+)
+ggplot(df_r2, aes(x = n, y = value, color = metric)) +
+  geom_line() + geom_point() +
+  labs(title = "R² vs n", y = expression(R^2)) +
+  theme_minimal()
+
+# Convergencia de coeficientes
+df_coef <- tibble(
+  n = rep(sample_sizes, times = 2),
+  coef  = c(coefs$x1, coefs$x2),
+  label = rep(c("β1","β2"), each = length(sample_sizes))
+)
+ggplot(df_coef, aes(x = n, y = coef, color = label)) +
+  geom_line() + geom_point() +
+  geom_hline(yintercept = beta_1, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = beta_2, linetype = "dashed", color = "blue") +
+  labs(title = "Convergencia de coeficientes", y = "Valor estimado") +
+  theme_minimal()
+```
+
+```{r}
+mse_train_z <- list(x1 = numeric(), x1_z = numeric())
+mse_test_z  <- list(x1 = numeric(), x1_z = numeric())
+
+for (n in sample_sizes) {
+  set.seed(42)
+  dfz <- simulate_with_z(n, seed = 42)
+  train_idx <- sample(seq_len(nrow(dfz)), size = 0.8 * nrow(dfz))
+  train <- dfz[train_idx, ]; test <- dfz[-train_idx, ]
+  m1 <- lm(y ~ x1, data = train)
+  m2 <- lm(y ~ x1 + z, data = train)
+  mse_train_z$x1   <- c(mse_train_z$x1,   mean((train$y - predict(m1, train))^2))
+  mse_test_z$x1    <- c(mse_test_z$x1,    mean((test$y - predict(m1, test))^2))
+  mse_train_z$x1_z <- c(mse_train_z$x1_z, mean((train$y - predict(m2, train))^2))
+  mse_test_z$x1_z  <- c(mse_test_z$x1_z,  mean((test$y - predict(m2, test))^2))
+}
+
+df_z <- tibble(
+  n = rep(sample_sizes, times = 4),
+  value = c(mse_train_z$x1, mse_train_z$x1_z, mse_test_z$x1, mse_test_z$x1_z),
+  metric = rep(c("Train x1","Train x1+z","Test x1","Test x1+z"), each = length(sample_sizes))
+)
+ggplot(df_z, aes(x = n, y = value, color = metric)) +
+  geom_line() + geom_point() +
+  labs(title = "Impacto de z (x1^2)", y = "MSE") +
+  theme_minimal()
+```
+
+```{r}
+set.seed(42)
+df_final <- simulate_with_z(500, seed = 42)
+
+# Crear un ggpairs más estético
+ggpairs(
+  df_final[, c("x1", "x2", "z", "y")],
+  upper = list(
+    continuous = wrap("cor", size = 3.5, color = "darkblue", 
+                     family = "serif", stars = TRUE)
+  ),
+  lower = list(
+    continuous = wrap("points", alpha = 0.6, size = 0.8, 
+                     color = "steelblue")
+  ),
+  diag = list(
+    continuous = wrap("densityDiag", fill = "lightblue", 
+                     color = "darkblue", alpha = 0.7)
+  ),
+  title = "Relaciones entre Variables",
+  axisLabels = "show",
+  columnLabels = c("x₁", "x₂", "z = x₁²", "y"),
+  labeller = label_wrap_gen(10)
+) +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "serif"),
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 10, face = "bold"),
+    strip.text = element_text(size = 10, face = "bold"),
+    strip.background = element_rect(fill = "aliceblue"),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill = NA, color = "gray90"),
+    plot.title = element_text(size = 14, hjust = 0.5, face = "bold")
+  )
+```
+
+```{r}
+if (!require("e1071")) install.packages("e1071")
+if (!require("kableExtra")) install.packages("kableExtra")
+
+# Distribuciones de error - Versión mejorada
+error_types <- c("normal", "uniform", "t")
+error_labels <- c("Normal (Gaussiana)", "Uniforme", "t-Student")
+error_colors <- c("#3498db", "#2ecc71", "#e74c3c")
+
+plots_err <- lapply(1:3, function(i) {
+  et <- error_types[i]
+  df_e <- simulate_with_different_errors(1000, et, seed = 42)
+  
+  # Calcular estadísticas para anotaciones
+  mean_val <- round(mean(df_e$eps), 2)
+  sd_val <- round(sd(df_e$eps), 2)
+  
+  # Crear histograma mejorado (sin skewness/kurtosis que requieren e1071)
+  ggplot(df_e, aes(x = eps)) +
+    geom_histogram(bins = 30, 
+                  fill = error_colors[i], 
+                  color = "white",
+                  alpha = 0.8) +
+    # Añadir curva de densidad
+    geom_density(color = "darkred", linewidth = 1) +
+    # Añadir línea vertical en la media
+    geom_vline(xintercept = mean_val, 
+              linetype = "dashed", 
+              color = "black",
+              linewidth = 0.7) +
+    # Añadir anotaciones estadísticas básicas
+    annotate("text", x = max(df_e$eps) * 0.7, y = Inf, 
+             label = paste("μ =", mean_val, "\nσ =", sd_val),
+             vjust = 1.2, hjust = 1, size = 3.5) +
+    labs(title = paste("Distribución de Error", error_labels[i]),
+         subtitle = paste("n = 1000, σ =", sigma),
+         x = "Valor del Error", 
+         y = "Frecuencia") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 12),
+      plot.subtitle = element_text(size = 10, color = "darkgrey"),
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(fill = NA, color = "grey90"),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+})
+
+# Combinar gráficos con títulos mejorados
+wrap_plots(plots_err, ncol = 3) +
+  plot_annotation(
+    title = "Comparación de Distribuciones de Error",
+    subtitle = "Impacto de diferentes distribuciones en la simulación",
+    theme = theme(
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5, color = "darkgrey")
+    )
+  )
+
+# Más predictores - Versión mejorada
+set.seed(42)
+df_more <- simulate_with_more_distributions(500, seed = 42)
+
+# Crear un ggpairs más estético para predictores mixtos
+ggpairs(
+  df_more,
+  upper = list(
+    continuous = wrap("cor", size = 3, color = "#2c3e50", 
+                     family = "sans", stars = TRUE)
+  ),
+  lower = list(
+    continuous = wrap("points", alpha = 0.6, size = 0.8, 
+                     color = "#3498db")
+  ),
+  diag = list(
+    continuous = wrap("densityDiag", fill = "#9b59b6", 
+                     color = "#8e44ad", alpha = 0.7)
+  ),
+  title = "Distribuciones Mixtas de Predictores",
+  columnLabels = c("x₁ (Normal)", "x₂ (Gamma)", 
+                  "x₃ (Poisson)", "x₄ (Binomial)")
+) +
+  theme_light() +
+  theme(
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 9),
+    strip.text = element_text(size = 9, face = "bold"),
+    strip.background = element_rect(fill = "#ecf0f1"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 14, hjust = 0.5, face = "bold")
+  )
+
+# Validación cruzada robusta - Presentación mejorada (sin kableExtra)
+set.seed(42)
+df_cv <- simulate_gamma(500, seed = 42)
+cv_mse <- evaluate_with_cv(df_cv[, c("x1","x2")], df_cv$y, k = 5)
+
+# Crear un panel informativo más atractivo
+cv_info <- data.frame(
+  Métrica = c("MSE (Validación Cruzada)", "RMSE (Validación Cruzada)", 
+             "R² (Estimado)", "n (Tamaño de muestra)", "k (Folds)"),
+  Valor = c(round(cv_mse, 3), round(sqrt(cv_mse), 3), 
+           round(1 - cv_mse/var(df_cv$y), 3), 500, 5)
+)
+
+# Mostrar tabla simple
+knitr::kable(cv_info, 
+            caption = "Resultados de Validación Cruzada",
+            align = c("l", "c"))
+
+# Intervalos de confianza - Presentación mejorada
+mdl_cv <- lm(y ~ x1 + x2, data = df_cv)
+ci <- compute_confidence_intervals(mdl_cv)
+
+# Crear dataframe para visualización
+ci_df <- data.frame(
+  Parámetro = c("Intercepto", "β₁ (x₁)", "β₂ (x₂)"),
+  Estimado = c(coef(mdl_cv)[1], coef(mdl_cv)[2], coef(mdl_cv)[3]),
+  IC_Inferior = ci[,1],
+  IC_Superior = ci[,2],
+  Valor_Real = c(beta_0, beta_1, beta_2)
+)
+
+# Visualizar intervalos de confianza
+ggplot(ci_df, aes(x = Parámetro, y = Estimado)) +
+  geom_point(size = 3, color = "#3498db") +
+  geom_errorbar(aes(ymin = IC_Inferior, ymax = IC_Superior), 
+               width = 0.2, color = "#3498db", linewidth = 1) +
+  geom_point(aes(y = Valor_Real), shape = 4, size = 4, color = "#e74c3c") +
+  labs(title = "Intervalos de Confianza (95%) vs Valores Reales",
+       subtitle = "Cruces rojas (×) indican los valores verdaderos",
+       x = "", y = "Valor del Coeficiente") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "darkgrey"),
+    axis.text.x = element_text(face = "bold", size = 11)
+  )
+
+# Diagnósticos con ggfortify - Versión mejorada
+autoplot(mdl_cv, which = 1:4, nrow = 2,
+        colour = "#3498db",         # Color de puntos
+        smooth.colour = "#e74c3c",  # Color de línea suavizada
+        alpha = 0.7,                # Transparencia
+        size = 1.5,                 # Tamaño de puntos
+        label.size = 0,             # Eliminar etiquetas de puntos
+        label.n = 0) +              # No etiquetar puntos
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(size = 9),
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "#ecf0f1"),
+    strip.text = element_text(face = "bold", color = "#2c3e50")
+  ) +
+  plot_annotation(
+    title = "Diagnósticos de Regresión",
+    subtitle = "Análisis de residuos y supuestos del modelo",
+    theme = theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "darkgrey")
+    )
+  )
+```
+
+```{r}
+# Distribuciones de error
+plots_err <- lapply(c("normal","uniform","t"), function(et) {
+  df_e <- simulate_with_different_errors(1000, et, seed = 42)
+  ggplot(df_e, aes(x = eps)) +
+    geom_histogram(bins = 30, fill = "salmon", color = "black") +
+    labs(title = paste("Error", et), x = "Residuo", y = "Frecuencia") +
+    theme_minimal()
+})
+wrap_plots(plots_err)
+
+# Más predictores
+set.seed(42)
+df_more <- simulate_with_more_distributions(500, seed = 42)
+ggpairs(df_more, lower = list(continuous = "points"), upper = list(continuous = "cor"))
+
+# Validación cruzada robusta
+set.seed(42)
+df_cv <- simulate_gamma(500, seed = 42)
+cv_mse <- evaluate_with_cv(df_cv[, c("x1","x2")], df_cv$y, k = 5)
+cat("CV MSE (lm - caret):", round(cv_mse, 3), "\n")
+
+# Intervalos de confianza
+mdl_cv <- lm(y ~ x1 + x2, data = df_cv)
+print(compute_confidence_intervals(mdl_cv))
+
+# Diagnósticos con ggfortify
+autoplot(mdl_cv, which = 1:4, nrow = 2)
+```
