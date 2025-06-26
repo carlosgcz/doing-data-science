@@ -44,7 +44,7 @@ Para este análisis exploratorio de los datos (EDA), se implementaron dos enfoqu
 - Valida la consistencia del análisis independientemente del lenguaje.
 - Fortalece el portafolio profesional al mostrar dominio en herramientas complementarias.
 
-## 📌 Observaciones Preliminares
+## Observaciones Preliminares
 
 - Los usuarios "Invalid" (Age ≤ 0) muestran un CTR casi el doble que los "Valid".
 - Su proporción varía del ~30% inicial a ~45% (picos días 15–30) y vuelve a ~30% al día 31.
@@ -55,4 +55,3 @@ Para este análisis exploratorio de los datos (EDA), se implementaron dos enfoqu
 
 **Nota**: Se ha mantenido el grupo etario "Invalid" (usuarios con edad igual o menor a cero) en ambos lenguajes para asegurar comparabilidad y transparencia en el tratamiento de datos faltantes o incompletos.
 
-**Nota**: Aquí encuentras tanto los análisis técnicos (notebooks y RMarkdown) como los documentos estratégicos.
