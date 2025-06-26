@@ -3,7 +3,7 @@ library(ggplot2)
 library(doBy)
 
 # Leer datos
-data1 <- read.csv("nyt1.csv")  # Asegúrate de estar en la carpeta correcta o usar ruta completa
+data1 <- read.csv("nyt1.csv") 
 
 # Crear grupos de edad
 data1$agecat <- cut(data1$Age, c(-Inf, 0, 18, 24, 34, 44, 54, 64, Inf),
