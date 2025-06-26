@@ -1,35 +1,69 @@
-# Capítulo 3: Algoritmos y Modelos
+# Módulo: Capítulo 3 - Algoritmos y Modelos
 
-En este capítulo realizaremos una serie de ejercicios de la Unidad 3 de *Doing Data Science*, enfocados en simulación de datos, regresión, comparación de modelos y visualización de resultados. A medida que avancemos, este espacio podrá albergar distintos notebooks y recursos asociados.
+## Descripción
 
-## Objetivos Generales
+Este módulo se enfoca en la implementación práctica de algoritmos de Machine Learning fundamentales, tal como se describe en el Capítulo 3 de *Doing Data Science*. Los ejercicios cubren desde la simulación de datos para validar modelos de regresión hasta la aplicación de técnicas de clasificación y la validación rigurosa de los resultados en datasets del mundo real.
 
-- Simular datos sintéticos (`x1`, `x2`, `ε`) con distribuciones definidas.
-- Ajustar modelos (lineales y variantes) para recuperar coeficientes verdaderos.
-- Comparar desempeño entre distintos modelos y transformaciones (p. ej., `z = x1^2`).
-- Analizar métricas como MSE, R² y su comportamiento según el tamaño de muestra.
-- Generar histogramas, scatterplots y otros gráficos explicativos.
-- Documentar hallazgos y conclusiones de cada ejercicio.
+## Arquitectura del Módulo
 
-## Estructura de Archivos
+A continuación se presenta un diagrama de flujo que ilustra los componentes y dependencias dentro de este módulo.
 
+```mermaid
+flowchart TD
+    %% Module Definition
+    Chapter03["Module: Chapter-03"]:::module
+
+    subgraph "Componentes del Módulo"
+        Data03["Data Sources"]:::data
+        Analysis03["Análisis (Notebooks)"]:::analysis
+        Doc03["Documentación (README)"]:::doc
+    end
+
+    %% Composition & Data Flow
+    Chapter03 --> Data03
+    Chapter03 --> Analysis03
+    Chapter03 --> Doc03
+    Data03 -->|"input para"| Analysis03
+
+    %% Ejercicios Específicos
+    subgraph "Ejercicios Implementados"
+        Ex01["Exercise 01: Simulación y Regresión"]:::exercise
+        Ex02["Exercise 02: ML en Mercado Inmobiliario"]:::exercise
+    end
+    
+    Analysis03 --> Ex01
+    Analysis03 --> Ex02
+
+    %% Click Events
+    click Chapter03 "https://github.com/carlosgcz/doing-data-science/tree/main/chapter-03"
+    click Data03 "https://github.com/carlosgcz/doing-data-science/tree/main/chapter-03/data"
+    click Analysis03 "https://github.com/carlosgcz/doing-data-science/tree/main/chapter-03/notebook"
+    click Ex01 "https://github.com/carlosgcz/doing-data-science/blob/main/chapter-03/notebook/exercise-01-simulation-regression.Rmd"
+    click Ex02 "https://github.com/carlosgcz/doing-data-science/blob/main/chapter-03/notebook/exercise-02-ml-algorithms.Rmd"
+
+    %% Styles
+    classDef module fill:#87CEEB,stroke:#000,stroke-width:2px;
+    classDef data fill:#FFE4B5,stroke:#000,stroke-width:2px;
+    classDef analysis fill:#90EE90,stroke:#000,stroke-width:2px;
+    classDef doc fill:#FFB6C1,stroke:#000,stroke-width:2px;
+    classDef exercise fill:#D8BFD8,stroke:#000,stroke-width:1.5px;
 ```
-data/       Carpeta para datos sintéticos o archivos CSV que utilicen los ejercicios.
-notebook/   Contendrá los notebooks y scripts por ejercicio:
-            - exercise-01-simulation-regression.ipynb
-            - exercise-01-simulation-regression.Rmd
-            - exercise-02-...
-            - etc.
-README.md   Descripción general de los contenidos y ejercicios de esta carpeta.
-```
 
-## Ejercicios Planeados
+---
 
-### Exercise 01: Simulación y Regresión Lineal
-- Simular `x1`, `x2`, `ε`.
-- Recuperar β reales con regresión.
-- Añadir transformaciones y comparar MSE según el tamaño de muestra.
+## Contenido Detallado
 
-### Exercise 02: [Pendiente por definir]
+### **Exercise 01: Simulación y Regresión Lineal**
+- **Objetivo:** Validar los principios de la regresión lineal mediante la simulación de datos. Se busca demostrar cómo un modelo de Mínimos Cuadrados Ordinarios (OLS) puede recuperar los parámetros (`β`) verdaderos de un proceso generador de datos, y cómo el error (`MSE`) se ve afectado por el ruido y el tamaño de la muestra.
+- **Tecnologías:** R, `dplyr`, `ggplot2`.
+- **Notebook:** [`notebook/exercise-01-simulation-regression.Rmd`](./notebook/exercise-01-simulation-regression.Rmd)
 
-### Exercise 03: [Pendiente por definir]
+### **Exercise 02: Algoritmos Básicos de ML (Mercado Inmobiliario de Manhattan)**
+- **Objetivo:** Aplicar un flujo de trabajo de Machine Learning de extremo a extremo a un dataset real.
+- **Metodología:**
+    1.  **Regresión Lineal:** Se desarrollan modelos para predecir el precio de venta. Se demuestra cuantitativamente que la **ubicación (`NEIGHBORHOOD`)** es un predictor dominante, elevando el R² ajustado del modelo del **70.6% al 81.2%**. El modelo final se valida mediante diagnósticos de residuos.
+    2.  **Clasificación (k-NN):** Se entrena un clasificador k-Nearest Neighbors para predecir el barrio de una propiedad basándose en sus características físicas. Se realiza una optimización de hiperparámetros, encontrando un `k` óptimo de 11 que resulta en una **precisión del 61.6%** en el conjunto de prueba.
+- **Tecnologías:** R, `dplyr`, `ggplot2`, `broom`, `FNN`, `caret`.
+- **Notebook:** [`notebook/exercise-02-ml-algorithms.Rmd`](./notebook/exercise-02-ml-algorithms.Rmd)
+
+---

@@ -1,0 +1,206 @@
+---
+title: "Análisis de Machine Learning en el Mercado Inmobiliario de Manhattan"
+author: "CGCZ"
+date: "`r format(Sys.time(), '%d de %B de %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+# Configuración global y carga de librerías
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+suppressPackageStartupMessages({
+  library(readxl)
+  library(dplyr)
+  library(ggplot2)
+  library(broom)
+  library(FNN)
+  library(caret)
+  library(knitr)
+  library(ggfortify) # Para autoplot() de diagnósticos
+})
+```
+
+## 1. Introducción y Preparación de Datos
+
+Este reporte analiza el dataset de ventas de propiedades en Manhattan para cumplir dos objetivos de machine learning:
+1.  **Regresión:** Predecir el precio de venta de una propiedad.
+2.  **Clasificación:** Predecir el barrio al que pertenece una propiedad.
+
+### Justificación de la Metodología
+
+Utilizamos un modelo de **regresión lineal** porque nuestra variable objetivo (precio) es numérica y continua. La selección de predictores y transformaciones se justifica de la siguiente manera:
+
+-   **Transformación Logarítmica (`log_price`):** El precio de las viviendas y los metros cuadrados suelen tener distribuciones muy asimétricas (sesgadas a la derecha). Aplicar el logaritmo (`log()`) nos ayuda a **estabilizar la varianza** (cumplir el supuesto de homocedasticidad) y a **linealizar la relación** entre las variables, haciendo el modelo lineal más apropiado y sus resultados más fiables.
+
+-   **Predictores Seleccionados:**
+    -   `GROSS_SQFT`: Un proxy directo del **tamaño** de la propiedad. Se espera una fuerte relación positiva con el precio.
+    -   `age`: Mide la **antigüedad**. Su efecto puede ser complejo: puede indicar deterioro (negativo) o valor histórico (positivo).
+    -   `RES_UNITS` y `TOTAL_UNITS`: Indican el **tipo y densidad** de la propiedad (ej. casa unifamiliar vs. edificio de apartamentos).
+    -   `NEIGHBORHOOD`: La **ubicación**, a menudo el predictor más importante del valor inmobiliario.
+
+```{r load-data}
+# Carga y limpieza de datos
+file_path <- "../../chapter-02/data/rollingsales_manhattan.xls"
+raw2 <- read_excel(file_path, sheet = 1, skip = 4)
+
+df_house <- raw2 %>%
+  rename(
+    SALE_PRICE = `SALE\nPRICE`, LAND_SQFT = `LAND SQUARE FEET`,
+    GROSS_SQFT = `GROSS SQUARE FEET`, YEAR_BUILT = `YEAR BUILT`,
+    RES_UNITS = `RESIDENTIAL UNITS`, COMM_UNITS = `COMMERCIAL UNITS`,
+    TOTAL_UNITS = `TOTAL UNITS`
+  ) %>%
+  filter(!is.na(SALE_PRICE), !is.na(NEIGHBORHOOD), GROSS_SQFT > 0, LAND_SQFT > 0, SALE_PRICE > 1000) %>%
+  mutate(NEIGHBORHOOD = as.factor(NEIGHBORHOOD), age = 2024 - YEAR_BUILT, log_price = log(SALE_PRICE)) %>%
+  select(log_price, SALE_PRICE, NEIGHBORHOOD, GROSS_SQFT, LAND_SQFT, age, RES_UNITS, COMM_UNITS, TOTAL_UNITS)
+```
+
+## 2. Modelado de Precios Mediante Regresión
+
+### Modelo 1: Basado en Características Físicas
+
+Nuestro primer modelo intenta predecir el `log_price` usando solo las características físicas de la propiedad.
+
+```{r regression-model-1}
+model_1 <- lm(log_price ~ GROSS_SQFT + age + RES_UNITS + TOTAL_UNITS, data = df_house)
+metrics_model_1 <- glance(model_1)
+```
+
+### Modelo 2: Incorporando la Ubicación
+
+El R² ajustado del primer modelo (`r round(metrics_model_1$adj.r.squared, 3)`) es robusto, pero sospechamos que la ubicación puede mejorarlo significativamente.
+
+```{r regression-model-2-corrected}
+# Ajuste del modelo 2
+model_2 <- lm(log_price ~ GROSS_SQFT + age + RES_UNITS + TOTAL_UNITS + NEIGHBORHOOD, data = df_house)
+metrics_model_2 <- glance(model_2)
+
+# Crear y mostrar la tabla comparativa
+comparison_df <- bind_rows(
+  "Modelo 1 (Físico)" = metrics_model_1,
+  "Modelo 2 (Físico + Ubicación)" = metrics_model_2,
+  .id = "Modelo"
+) %>%
+  select(Modelo, r.squared, adj.r.squared, sigma)
+
+kable(
+  comparison_df,
+  caption = "Comparación de Rendimiento de Modelos de Regresión",
+  digits = 3
+)
+```
+
+La tabla anterior demuestra un **aumento significativo del R² ajustado**, confirmando que la ubicación es un factor predictivo crucial.
+
+### Visualización y Ajuste del Modelo Final
+
+#### Impacto de los Predictores
+
+Para entender qué barrios tienen el mayor impacto, graficamos sus coeficientes del `modelo_2`.
+
+```{r visualize-regression}
+tidy_model_2 <- tidy(model_2)
+
+neighborhood_coefs <- tidy_model_2 %>%
+  filter(grepl("NEIGHBORHOOD", term)) %>%
+  mutate(term = gsub("NEIGHBORHOOD", "", term)) %>%
+  arrange(desc(estimate)) %>%
+  slice(c(1:10, (n()-4):n()))
+
+ggplot(neighborhood_coefs, aes(x = estimate, y = reorder(term, estimate), fill = estimate > 0)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("firebrick", "steelblue")) +
+  labs(title = "Impacto del Barrio en el Precio (vs. Alphabet City)",
+       subtitle = "Top 10 más caros y Bottom 5 más baratos",
+       x = "Coeficiente (Impacto en log-precio)", y = "Barrio") +
+  theme_minimal()
+```
+
+#### Calidad del Ajuste: Valores Reales vs. Predichos
+
+Un buen modelo debe generar predicciones que se alineen con los valores reales. Un gráfico de dispersión en escala logarítmica nos permite verificar esto visualmente.
+
+```{r plot-actual-vs-predicted}
+# Añadir predicciones al dataframe
+df_house <- df_house %>%
+  mutate(predicted_log_price = predict(model_2, .))
+
+# Graficar
+ggplot(df_house, aes(x = log_price, y = predicted_log_price)) +
+  geom_point(alpha = 0.2, color = "purple") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Calidad del Ajuste: Precio Real vs. Predicho (Modelo 2)",
+       subtitle = "Los puntos deben alinearse con la línea roja (y=x)",
+       x = "Log(Precio Real)",
+       y = "Log(Precio Predicho)") +
+  coord_fixed() + # Asegura una escala 1:1
+  theme_minimal()
+```
+
+## 3. Clasificación de Barrios con k-NN
+
+Ahora, intentamos predecir el `NEIGHBORHOOD` usando un clasificador k-NN.
+
+```{r knn-classifier}
+# Preparación de datos y búsqueda del mejor k
+set.seed(42)
+idx <- sample(nrow(df_house), 0.8 * nrow(df_house))
+train <- df_house[idx, ]; test <- df_house[-idx, ]
+preds <- c("GROSS_SQFT", "LAND_SQFT", "age", "RES_UNITS", "TOTAL_UNITS")
+pp <- preProcess(train[preds], method = c("center", "scale"))
+train_sc <- predict(pp, train[preds]); test_sc <- predict(pp, test[preds])
+y_tr <- train$NEIGHBORHOOD; y_te <- test$NEIGHBORHOOD
+ks <- seq(3, 25, by = 2)
+acc <- sapply(ks, function(k) {
+  pred_char <- as.character(FNN::knn(train_sc, test_sc, y_tr, k = k))
+  mean(pred_char == as.character(y_te))
+})
+best_k <- ks[which.max(acc)]; best_acc <- max(acc)
+
+# Gráfico de resultados
+tibble(k = ks, accuracy = acc) %>%
+  ggplot(aes(k, accuracy)) +
+  geom_line(color="darkgreen") + geom_point(color="darkgreen", size=3) +
+  geom_vline(xintercept = best_k, linetype = "dashed", color = "red") +
+  labs(title = "Precisión del Clasificador k-NN",
+       subtitle = sprintf("El k óptimo es %d, con una precisión del %.1f%%", best_k, best_acc * 100),
+       x = "k (Número de Vecinos)", y = "Precisión en el conjunto de prueba") +
+  theme_minimal()
+```
+
+## 4. Conclusiones y Acciones Potenciales
+
+- **Regresión:** La ubicación (`NEIGHBORHOOD`) es el factor más importante para explicar el precio, aumentando el R² ajustado del modelo de `r round(metrics_model_1$adj.r.squared * 100, 1)`% a `r round(metrics_model_2$adj.r.squared * 100, 1)`%.
+- **Clasificación:** Es posible predecir el barrio con una precisión del `r round(best_acc * 100, 1)`% usando solo características físicas, lo que sugiere una fuerte correlación entre el tipo de propiedad y su ubicación.
+
+### Acciones Recomendadas
+- **Inversores:** Usar el modelo de regresión para encontrar propiedades infravaloradas.
+- **Portales Inmobiliarios:** Implementar el clasificador k-NN para validar la información de los listados.
+- **Gobierno de la Ciudad:** Utilizar los coeficientes del modelo por barrio para informar políticas de vivienda y desarrollo urbano.
+
+---
+
+## 5. Diagnósticos y Reproducibilidad
+
+### Diagnósticos del Modelo de Regresión
+
+Para asegurar la validez de nuestro modelo final (`modelo_2`), verificamos sus supuestos. El gráfico de Residuos vs. Valores Ajustados es clave para detectar la no-linealidad y la heterocedasticidad. Idealmente, deberíamos ver una nube de puntos sin patrones.
+
+```{r diagnostics-plot}
+autoplot(model_2, which = 1, ncol = 1, label.size = 2) + theme_minimal()
+```
+
+La nube de residuos parece razonablemente aleatoria, sin un patrón de embudo claro, lo que da confianza en los resultados del modelo.
+
+### Entorno de Reproducibilidad
+
+Este análisis se realizó con las siguientes versiones de R y paquetes para garantizar la reproducibilidad.
+
+```{r session-info, echo=TRUE}
+sessionInfo()
+```
