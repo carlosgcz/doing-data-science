@@ -1,57 +1,42 @@
-## 📁 Estructura del Capítulo
+# Módulo: Capítulo 2 - Análisis Exploratorio de Datos (EDA)
 
-```
-chapter-02/
-├── data/                   
-│   ├── nyt1.csv … nyt31.csv       # Datos de NYT (31 días)
-│   └── rollingsales_manhattan.xls # Ventas de Manhattan
-├── notebook/                
-│   ├── eda_nyt.ipynb              # EDA un día (Python + seaborn)
-│   ├── eda_nyt.Rmd                # EDA un día (R + ggplot2)
-│   ├── automate_nyt.ipynb         # EDA multidiario (Python)
-│   ├── automate_nyt_analysis.Rmd  # EDA multidiario (R)
-│   ├── manhattan_analysis.ipynb   # Limpieza & EDA Manhattan (Python)
-│   └── realdirect_strategy.md     # Estrategia de datos RealDirect
-└── README.md                      # Este archivo
-```
+## Descripción
 
-## 📊 Resumen de Contenidos
+Este módulo se enfoca en los fundamentos del Análisis Exploratorio de Datos (EDA), tal como se presenta en el Capítulo 2 de *Doing Data Science*. El objetivo es limpiar, visualizar y generar hipótesis iniciales a partir de datasets crudos. Una característica clave de este módulo es la implementación paralela de los análisis en **R (con ggplot2)** y **Python (con seaborn)**, demostrando cómo diferentes herramientas pueden usarse para lograr los mismos objetivos de análisis y validando la consistencia de los hallazgos.
 
-### Exploración Estadística (NYT)
+---
 
-- **Un día**: `eda_nyt.ipynb` / `eda_nyt.Rmd`
-- **Multidiario**: `automate_nyt.ipynb` / `automate_nyt_analysis.Rmd`
+## Contenido Detallado
 
-### Caso RealDirect
+### **Exercise 01: EDA en Datos de Publicidad (NYT)**
 
-- **Documento de Estrategia**: `realdirect_strategy.md`
+- **Objetivo:** Analizar los datos de impresiones y clics de anuncios del New York Times para entender el comportamiento del usuario. El análisis busca identificar patrones demográficos, calcular el Click-Through Rate (CTR) y descubrir anomalías en los datos.
+- **Metodología:**
+    1. **Análisis de un solo día:** Se realiza un EDA inicial sobre un único archivo (`nyt1.csv`) para establecer una línea base.
+    2. **Automatización del análisis:** Se crea un script para procesar los 31 días de datos, agregando los resultados para un análisis longitudinal.
+    3. **Hallazgos Clave:**
+        - Se identificó un grupo de usuarios "Invalid" (Edad ≤ 0) con un **CTR casi el doble** que el de los usuarios válidos.
+        - La proporción de este grupo "Invalid" es un factor dominante que explica las fluctuaciones del CTR global a lo largo del mes.
+        - Los usuarios mayores de 65 años muestran un CTR consistentemente más alto que otros grupos de edad.
+    4. **Implementación Dual:** Todo el análisis se replica en R y Python para asegurar la reproducibilidad y comparar las capacidades de visualización de `ggplot2` y `seaborn`.
+- **Tecnologías:** R, Python, ggplot2, seaborn, dplyr, pandas.
+- **Notebooks:**
+  - [`notebook/eda_nyt.Rmd`](./notebook/eda_nyt.Rmd) y [`notebook/eda_nyt.ipynb`](./notebook/eda_nyt.ipynb) (Análisis de un día)
+  - [`notebook/automate_nyt_analysis.Rmd`](./notebook/automate_nyt_analysis.Rmd) y [`notebook/automate_nyt.ipynb`](./notebook/automate_nyt.ipynb) (Análisis multidiario)
 
-### Mercado Inmobiliario (Manhattan)
+### **Exercise 02: Limpieza y EDA del Mercado Inmobiliario (Manhattan)**
 
-- **Carga, Limpieza y EDA**: `manhattan_analysis.ipynb`
+- **Objetivo:** Tomar un dataset desordenado del mundo real (`rollingsales_manhattan.xls`), realizar una limpieza exhaustiva y prepararlo para análisis posteriores.
+- **Metodología:**
+    1. **Carga y Limpieza:** Se carga el archivo Excel y se aplican técnicas de *data wrangling* para corregir tipos de datos, manejar valores faltantes y estandarizar formatos.
+    2. **Análisis Exploratorio Inicial:** Se generan estadísticas descriptivas y visualizaciones para entender la distribución de precios, tipos de propiedades y otras características clave.
+    3. **Preparación para Modelado:** Este notebook sirve como el pre-procesamiento fundamental para los modelos de regresión y clasificación que se desarrollan en el **Capítulo 3**.
+- **Tecnologías:** Python, pandas, seaborn.
+- **Notebook:** [`notebook/manhattan_analysis.ipynb`](./notebook/manhattan_analysis.ipynb)
 
-## 📊 Análisis en R y Python: Enfoques Complementarios
+### **Documento Adicional: Estrategia de Datos RealDirect**
 
-Para este análisis exploratorio de los datos (EDA), se implementaron dos enfoques paralelos utilizando R (`ggplot2`) y Python (`seaborn`). Ambos entornos permiten explorar y visualizar datos de manera efectiva, pero cada uno tiene fortalezas distintas:
+- **Descripción:** Un documento de texto que resume la estrategia de datos propuesta para la empresa ficticia RealDirect, proporcionando contexto de negocio para el análisis del mercado inmobiliario.
+- **Archivo:** [`notebook/realdirect_strategy.md`](./notebook/realdirect_strategy.md)
 
-- **R con ggplot2**: Se destaca por su estética visual refinada y su sintaxis declarativa, lo que permite construir gráficos complejos de forma estructurada y con mínima configuración. Es ideal para análisis estadísticos profundos y presentaciones formales.
-
-- **Python con seaborn**: Permite una integración más fluida con procesos de machine learning y pipelines de análisis, ofreciendo flexibilidad en la manipulación de datos y una curva de aprendizaje amigable para quienes ya programan en Python.
-
-### Beneficios de Desarrollar Ambos Enfoques en Paralelo
-
-- Refuerza la comprensión de los conceptos fundamentales del análisis exploratorio.
-- Valida la consistencia del análisis independientemente del lenguaje.
-- Fortalece el portafolio profesional al mostrar dominio en herramientas complementarias.
-
-## Observaciones Preliminares
-
-- Los usuarios "Invalid" (Age ≤ 0) muestran un CTR casi el doble que los "Valid".
-- Su proporción varía del ~30% inicial a ~45% (picos días 15–30) y vuelve a ~30% al día 31.
-- Esto explica el pico de CTR global (~2%) cuando "Invalid" aumenta, y su caída (~1.86%) al descender su proporción.
-- Los usuarios mayores de 65 años muestran un CTR promedio más alto que otros grupos.
-- Una gran proporción de usuarios tiene Age = 0 (grupo "Invalid"), lo que podría reflejar visitantes no registrados.
-- La mayoría de los usuarios registrados no hacen clics, pero existen diferencias claras por edad y género en quienes sí lo hacen.
-
-**Nota**: Se ha mantenido el grupo etario "Invalid" (usuarios con edad igual o menor a cero) en ambos lenguajes para asegurar comparabilidad y transparencia en el tratamiento de datos faltantes o incompletos.
-
+---
