@@ -143,3 +143,10 @@ Thumbs.db
 *.tmp
 *.bak
 *.swp
+
+# === chapter-04 ===
+# Ignorar el dataset Enron y archivos generados
+chapter-04/data/
+chapter-04/enron1/
+chapter-04/*.tar.gz
+chapter-04/*.html

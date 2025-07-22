@@ -1,0 +1,449 @@
+---
+title: "Filtro de Spam con Naive Bayes: Un Enfoque Iterativo"
+author: "CGCZ"
+date: "`r format(Sys.time(), '%d de %B de %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Fijamos una semilla para la reproducibilidad de cualquier proceso aleatorio
+set.seed(123)
+# Librerías
+suppressPackageStartupMessages({
+  library(knitr)    # para tablas con kable()
+  library(dplyr)    # para manipulación de datos
+  library(readr)    # para leer archivos de texto
+  library(tibble)   # para dataframes modernos (tibbles)
+  library(tidytext) # para tokenización y procesamiento de texto
+  library(ggplot2)  # para visualizaciones
+  library(caret)    # para la matriz de confusión (evaluation)
+  library(tidyr) 
+  library(SnowballC)
+  library(stringr) # Para la función str_detect
+})
+```
+
+# 1. Carga y Organización de Todos los Correos
+
+En esta sección leemos los correos de las carpetas spam/ y ham/, los combinamos en un solo dataframe y preparamos email_df para el entrenamiento de nuestro clasificador.
+
+```{r load-data}
+# 2.1 Definir rutas a las carpetas
+base_path <- "enron1"
+spam_path <- file.path(base_path, "spam")
+ham_path  <- file.path(base_path, "ham")
+
+# 2.1b Pequeña defensa para asegurar que las carpetas existen
+if (!dir.exists(base_path)) {
+  stop("La carpeta base 'enron1' no se encuentra. Asegúrate de que los datos están en el directorio correcto.")
+}
+
+# 2.2 Función para leer todos los .txt de una carpeta
+read_folder <- function(folder_path, class_label) {
+  file_names <- list.files(folder_path, full.names = TRUE)
+  texts      <- lapply(file_names, read_file)
+  tibble(
+    id    = basename(file_names),
+    class = class_label,
+    text  = unlist(texts)
+  )
+}
+
+# 2.3 Leer y combinar spam + ham
+spam_df  <- read_folder(spam_path, class_label = "spam")
+ham_df   <- read_folder(ham_path,  class_label = "ham")
+email_df <- bind_rows(spam_df, ham_df)
+
+# 2.4 Inspección rápida
+glimpse(email_df)
+```
+
+---
+
+
+# 2. Análisis Exploratorio y Cálculo Inicial
+
+En esta primera fase calculamos de forma manual —con R— la probabilidad de que un correo sea spam, dado que contiene la palabra **"meeting"**, a partir de los conteos obtenidos con un script Bash sobre el dataset Enron1.
+
+```{r bayes-manual, echo=TRUE}
+# --- Cálculo Bayesiano para P(spam|"meeting") ---
+
+# 1. Calcular los conteos
+
+# Contar el número total de correos en cada clase
+Nspam <- nrow(filter(email_df, class == "spam"))
+Nham  <- nrow(filter(email_df, class == "ham"))
+
+# Contar el número de correos en cada clase que contienen la palabra "meeting"
+# Se usa regex() con ignore_case = TRUE para un conteo no sensible a mayúsculas.
+Nword_spam <- nrow(
+  filter(email_df, class == "spam" & str_detect(text, regex("meeting", ignore_case = TRUE)))
+)
+Nword_ham <- nrow(
+  filter(email_df, class == "ham" & str_detect(text, regex("meeting", ignore_case = TRUE)))
+)
+
+# 2. Calcular las probabilidades "Prior": P(spam) y P(ham)
+Pspam <- Nspam / (Nspam + Nham)
+Pham  <- 1 - Pspam
+
+# 3. Calcular las probabilidades "Likelihood": P(meeting|clase)
+Pword_spam <- Nword_spam / Nspam
+Pword_ham  <- Nword_ham / Nham
+
+# 4. Calcular la probabilidad "Posterior" usando la Ley de Bayes: P(spam|meeting)
+numerador   <- Pword_spam * Pspam
+denominador <- numerador + Pword_ham * Pham
+Pspam_word  <- numerador / denominador
+
+# 5. Presentar los resultados en una tabla
+results <- data.frame(
+  Descripcion = c(
+    "P(spam)",
+    "P(ham)",
+    "P(meeting | spam)",
+    "P(meeting | ham)",
+    "P(spam | meeting)"
+  ),
+  Valor = c(Pspam, Pham, Pword_spam, Pword_ham, Pspam_word)
+)
+
+kable(
+  results,
+  digits  = 4,
+  caption = "Cálculo Bayesiano para la palabra 'meeting' (basado en conteos directos)"
+)
+```
+
+> El resultado `r round(Pspam_word * 100, 2)`% muestra que si un correo contiene "meeting", la probabilidad de que sea spam es baja. Esto sugiere que **"meeting"** es mejor indicador de **ham**.
+
+---
+
+
+# 3. Próximos Pasos: Clasificador Naive Bayes Completo
+
+
+Ahora que tenemos los correos cargados, necesitamos procesar el texto para poder analizarlo. Este proceso, conocido como **tokenización**, consiste en dividir el texto en palabras individuales y limpiarlo. Utilizaremos la librería `tidytext`, que se integra perfectamente con `dplyr`.
+
+El proceso consta de dos pasos principales:
+1.  **Tokenización:** Convertir cada correo en una fila por palabra.
+2.  **Limpieza:** Eliminar palabras vacías (stop words) como "the", "a", "is", que no aportan significado para la clasificación.
+
+```{r text-preprocessing}
+# 1. Cargar la librería necesaria (ya cargada)
+# library(tidytext)
+
+# 2. Tokenizar el dataframe (sin cambios)
+tokens_df <- email_df %>%
+  unnest_tokens(
+    output = word,
+    input = text,
+    token = "words"
+  )
+
+# 3. Cargar la lista de stop words estándar (sin cambios)
+data("stop_words")
+
+# 4. Crear nuestra lista de stop words personalizada y justificada
+# Enfoque conservador: eliminamos solo ruido estructural y numérico.
+custom_stop_words <- tibble(
+  word = c("subject", "cc", "pm", "fwd", # Ruido de estructura de email
+           as.character(0:9))            # Ruido numérico
+)
+
+# 5. Eliminar AMBAS listas de stop words
+tokens_clean_df <- tokens_df %>%
+  anti_join(stop_words, by = "word") %>%
+  anti_join(custom_stop_words, by = "word")
+
+# 6. Inspeccionar el resultado (este gráfico ahora será mucho más interesante)
+tokens_clean_df %>%
+  count(word, sort = TRUE) %>%
+  slice_max(order_by = n, n = 15) %>% # Usamos slice_max por robustez
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top 15 Palabras Más Comunes (Tras Limpieza Básica)",
+    x = "Palabra",
+    y = "Frecuencia Total"
+  ) +
+  theme_minimal()
+```
+
+# 3.1 Análisis de Importancia de Palabras con TF-IDF
+
+Ahora que tenemos los tokens limpios, podemos ir un paso más allá de la simple frecuencia. Usaremos la métrica TF-IDF para descubrir qué palabras son realmente distintivas de cada categoría, no solo las más comunes.
+
+```{r explore-tfidf, echo=TRUE}
+# Paso 1: Contar palabras por clase (tomando los tokens ya limpios)
+word_counts_for_tfidf <- tokens_clean_df %>%
+  count(class, word, sort = TRUE)
+
+# Paso 2: Usar la función mágica de tidytext para calcular el tf-idf
+# bind_tf_idf() toma la columna de palabra (term), la de documento (class) y la de conteo (n)
+word_tf_idf <- word_counts_for_tfidf %>%
+  bind_tf_idf(term = word, document = class, n = n)
+
+# Paso 3: Visualicemos las palabras más importantes por clase según TF-IDF
+# Estas son las palabras que realmente diferencian al spam del ham.
+word_tf_idf %>%
+  # Mostramos las 15 más importantes para cada clase
+  group_by(class) %>%
+  slice_max(tf_idf, n = 15) %>%
+  ungroup() %>%
+  # El reorder_within es para que ggplot ordene las barras dentro de cada faceta
+  ggplot(aes(x = reorder_within(word, tf_idf, class), y = tf_idf, fill = class)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ class, scales = "free") +
+  scale_x_reordered() +
+  coord_flip() +
+  labs(
+    title = "Top 15 Palabras Más IMPORTANTES por Clase (según TF-IDF)",
+    subtitle = "TF-IDF revela palabras distintivas como 'viagra' para spam y 'enron' para ham.",
+    x = "Palabra (reordenada dentro de cada clase)",
+    y = "Puntuación TF-IDF"
+  ) +
+  theme_minimal()
+
+```
+
+
+---
+
+# 4. Entrenamiento del Modelo: Cálculo de Probabilidades
+
+Con nuestro texto ya procesado, podemos "entrenar" nuestro modelo Naive Bayes. Este proceso consiste en calcular todas las probabilidades necesarias a partir de nuestros datos.
+
+### 4.1. Cálculo de las Probabilidades "Likelihood" con Suavizado de Laplace
+
+El componente más importante del modelo son las verosimilitudes o "likelihoods": $P(\text{palabra}|\text{spam})$ y $P(\text{palabra}|\text{ham})$.
+
+Para evitar el problema de las probabilidades cero (que una palabra nunca aparezca en una categoría), aplicamos el **Suavizado de Laplace**. La fórmula es:
+
+$$
+P(\text{palabra}|\text{clase}) = \frac{\text{Conteo de la palabra en la clase} + \alpha}{\text{Total de palabras en la clase} + (\alpha \cdot \text{Tamaño del vocabulario})}
+$$
+
+Usaremos un valor de $\alpha = 1$, una elección muy común.
+
+```{r calculate-probabilities}
+# Paso 1: Contar la frecuencia de cada palabra en cada clase ('spam' y 'ham')
+word_counts <- tokens_clean_df %>%
+  count(class, word, sort = TRUE)
+
+# Paso 2: Calcular el número total de palabras en cada clase
+total_words_by_class <- tokens_clean_df %>%
+  group_by(class) %>%
+  summarise(n_total_words = n())
+
+# Paso 3: Calcular el tamaño del vocabulario (número de palabras únicas)
+vocab_size <- n_distinct(word_counts$word)
+
+# Paso 4: Unir los conteos de palabras con los totales por clase
+word_counts <- word_counts %>%
+  left_join(total_words_by_class, by = "class")
+
+# Paso 5: Aplicar el Suavizado de Laplace para calcular la probabilidad
+# Este es el dataframe final que contiene el "conocimiento" de nuestro modelo
+alpha <- 1
+
+word_probabilities <- word_counts %>%
+  mutate(
+    vocab_size = vocab_size,
+    probability = (n + alpha) / (n_total_words + alpha * vocab_size)
+  ) %>%
+  ungroup()
+
+# Inspeccionemos nuestro modelo. ¿Cuáles son las palabras más probables en cada clase?
+word_probabilities %>%
+  group_by(class) %>%
+  top_n(10, probability) %>%
+  ungroup() %>%
+  mutate(word = reorder_within(word, probability, class)) %>%
+  ggplot(aes(x = word, y = probability, fill = class)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ class, scales = "free_y") +
+  scale_x_reordered() +
+  coord_flip() +
+  labs(
+    title = "Top 10 Palabras Más Probables por Clase",
+    subtitle = "Comparativa entre correos Spam y Ham",
+    x = "Palabra",
+    y = "Probabilidad (con suavizado de Laplace)"
+  ) +
+  theme_minimal()
+```
+
+
+### 4.2. Cálculo de las Probabilidades "Prior"
+
+Los "priors" son la probabilidad base de que un correo sea spam o ham, independientemente de su contenido. Los calculamos a partir del número total de correos en cada clase, usando nuestro dataframe original email_df.
+
+```{r calculate-priors}
+
+# Usaremos los conteos originales que ya teníamos del dataframe 'email_df'
+priors <- email_df %>%
+  count(class) %>%
+  mutate(prior = n / sum(n))
+
+priors
+```
+
+---
+
+# 5. Construcción de la Función Clasificadora
+
+Ahora que tenemos nuestro "modelo" entrenado (es decir, nuestras tablas de probabilidades `priors` y `word_probabilities`), podemos construir la función que pondrá en práctica la lógica de Naive Bayes.
+
+```{r define-classifier-function-robust}
+# --- Función Clasificadora Modular y Robusta ---
+# Esta versión modular recibe las listas de stop words y el valor de alpha
+# como argumentos para máxima flexibilidad en la experimentación.
+classify_email <- function(email_text,
+                           train_priors_df,
+                           train_word_probs_df,
+                           stopwords_list_1,
+                           stopwords_list_2 = NULL,
+                           alpha_smooth = 1) {
+
+  # 1. Preprocesar el texto del correo de entrada
+  tokens_pipe <- tibble(text = email_text) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stopwords_list_1, by = "word")
+
+  # Aplicar la segunda lista de stop words si se proporciona
+  if (!is.null(stopwords_list_2)) {
+    tokens_pipe <- tokens_pipe %>%
+      anti_join(stopwords_list_2, by = "word")
+  }
+  
+  # Aplicar stemming al final del preprocesamiento
+  email_tokens <- tokens_pipe %>%
+    mutate(word = wordStem(word, language = "english"))
+
+  # Si el correo queda vacío tras la limpieza, no se puede decidir
+  if (nrow(email_tokens) == 0) {
+    return("undecided")
+  }
+
+  # 2. Calcular la probabilidad logarítmica para palabras no vistas
+  # Se utiliza el valor de alpha proporcionado en el argumento `alpha_smooth`
+  log_prob_unseen <- train_word_probs_df %>%
+    distinct(class, n_total_words, vocab_size) %>%
+    mutate(log_p = log(alpha_smooth / (n_total_words + alpha_smooth * vocab_size))) %>%
+    select(class, log_p)
+
+  # 3. Obtener las probabilidades para cada palabra del correo
+  word_scores <- email_tokens %>%
+    left_join(train_word_probs_df, by = "word") %>%
+    complete(word, class = c("spam", "ham")) %>%
+    left_join(log_prob_unseen, by = "class")
+
+  # 4. Calcular la puntuación final (log-posterior) para cada clase
+  final_scores <- word_scores %>%
+    group_by(class) %>%
+    summarise(
+      log_likelihood = sum(if_else(is.na(probability), log_p, log(probability)))
+    ) %>%
+    left_join(train_priors_df, by = "class") %>%
+    mutate(score = log(prior) + log_likelihood) %>%
+    tidyr::complete(class = c("spam", "ham"), fill = list(score = -Inf))
+
+  # 5. Devolver la clase con la puntuación más alta
+  return(final_scores$class[which.max(final_scores$score)])
+}
+```
+
+---
+
+# 6. Evaluación Formal del Modelo
+
+Para medir el rendimiento de forma objetiva, dividimos los datos en **entrenamiento (80%)** y **prueba (20%)**. Entrenamos un nuevo modelo usando solo los datos de entrenamiento y lo probamos en los datos que nunca ha visto.
+
+```{r full-evaluation-pipeline}
+# --- Paso 1: División de Datos ---
+train_idx <- createDataPartition(email_df$class, p = 0.8, list = FALSE)
+train_emails <- email_df[train_idx, ]
+test_emails <- email_df[-train_idx, ]
+
+# --- Paso 2: Re-entrenamiento del Modelo con Parámetros Optimizados ---
+
+# Definir el valor de alpha para el suavizado
+alpha_val <- 0.1 #
+
+# Cargar y definir las listas de stop words
+data("stop_words")
+custom_stop_words_aggressive <- tibble(
+  word = c("subject", "cc", "pm", "fwd", "enron", "hou", "ect", "hpl", 
+           "daren", "corp", "kaminski", "vince", "louise", "td", "www", 
+           "com", "http", "font", as.character(0:9))
+)
+
+# Pipeline de pre-procesamiento para los datos de entrenamiento
+train_tokens <- train_emails %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words, by = "word") %>%
+  anti_join(custom_stop_words_aggressive, by = "word") %>%
+  mutate(word = wordStem(word, language = "english"))
+
+# Calcular Likelihoods
+train_word_counts <- train_tokens %>% count(class, word, sort = TRUE)
+train_total_words <- train_tokens %>% group_by(class) %>% summarise(n_total_words = n())
+train_vocab_size <- n_distinct(train_word_counts$word)
+
+train_word_probs <- train_word_counts %>%
+  left_join(train_total_words, by = "class") %>%
+  mutate(
+    vocab_size = train_vocab_size,
+    probability = (n + alpha_val) / (n_total_words + alpha_val * vocab_size)
+  ) %>%
+  ungroup()
+
+# Calcular Priors
+train_priors <- train_emails %>%
+  count(class) %>%
+  mutate(prior = n / sum(n))
+
+# --- Paso 3: Predicción en el Conjunto de Prueba ---
+predictions <- sapply(test_emails$text, function(email) {
+  classify_email(
+    email_text = email,
+    train_priors_df = train_priors,
+    train_word_probs_df = train_word_probs,
+    stopwords_list_1 = stop_words,
+    stopwords_list_2 = custom_stop_words_aggressive,
+    alpha_smooth = alpha_val # <-- PASAMOS EL MISMO ALPHA A LA FUNCIÓN
+  )
+})
+
+# --- Paso 4: Evaluación de Resultados ---
+test_results <- tibble(
+  actual_class = test_emails$class,
+  predicted_class = as.character(predictions)
+)
+all_levels <- c("spam", "ham", "undecided")
+test_results$actual_class <- factor(test_results$actual_class, levels = all_levels)
+test_results$predicted_class <- factor(test_results$predicted_class, levels = all_levels)
+
+conf_matrix <- confusionMatrix(
+  data = test_results$predicted_class,
+  reference = test_results$actual_class
+)
+conf_matrix
+```
+
+# 7. Entorno de Reproducibilidad
+
+Este análisis se realizó con las siguientes versiones de R y paquetes para garantizar su reproducibilidad.
+
+```{r session-info}
+sessionInfo()
+```
