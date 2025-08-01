@@ -23,8 +23,8 @@ suppressPackageStartupMessages({
   library(tidytext) # para tokenización y procesamiento de texto
   library(ggplot2)  # para visualizaciones
   library(caret)    # para la matriz de confusión (evaluation)
-  library(tidyr) 
-  library(SnowballC)
+  library(tidyr)    # para manipulación de datos
+  library(SnowballC) # para stemming de palabras
   library(stringr) # Para la función str_detect
 })
 ```
@@ -420,7 +420,7 @@ predictions <- sapply(test_emails$text, function(email) {
     train_word_probs_df = train_word_probs,
     stopwords_list_1 = stop_words,
     stopwords_list_2 = custom_stop_words_aggressive,
-    alpha_smooth = alpha_val # <-- PASAMOS EL MISMO ALPHA A LA FUNCIÓN
+    alpha_smooth = alpha_val # <-- se pasa el mismo alpha a la función
   )
 })
 
