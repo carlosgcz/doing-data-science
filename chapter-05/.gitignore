@@ -1,0 +1,15 @@
+# Entorno Virtual
+venv_ch05/
+__pycache__/
+
+# Archivos de configuración local
+.env
+
+# Datos (si son grandes o privados)
+data/
+
+# Logs
+logs/
+
+# Artefactos de Notebook
+.ipynb_checkpoints/
