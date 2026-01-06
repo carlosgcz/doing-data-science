@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from sklearn.linear_model import Ridge  # <--- CAMBIO 1: Usamos Ridge
+from sklearn.linear_model import Ridge
 import joblib
 import os
 from datetime import datetime
@@ -10,7 +10,6 @@ class FinancialPredictor:
     def __init__(self, ticker="SPY", lags=2):
         self.ticker = ticker
         self.lags = lags
-        # CAMBIO 2: Regularización. alpha=0.5 hace que el modelo sea 'escéptico' al ruido.
         self.model = Ridge(alpha=0.5) 
         self.data = None
         self.features = []
@@ -42,7 +41,7 @@ class FinancialPredictor:
             df[col] = df['log_ret'].shift(lag)
             self.features.append(col)
             
-        # CAMBIO 3: Feature Engineering (Tendencia y Volatilidad)
+       
         # Promedio móvil de 5 días (Tendencia semanal)
         df['trend_5'] = df['log_ret'].rolling(window=5).mean().shift(1)
         self.features.append('trend_5')
