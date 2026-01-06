@@ -88,7 +88,7 @@ class FinancialPredictor:
         X_new = np.array(input_data).reshape(1, -1)
         
         pred = self.model.predict(X_new)[0]
-        signal = "COMPRAR 🟢" if pred > 0 else "VENDER 🔴"
+        signal = "COMPRAR" if pred > 0 else "VENDER"
         
         print(f"\n=== PRONÓSTICO ROBUSTO ({self.ticker}) ===")
         print(f"Features: {self.features}")
